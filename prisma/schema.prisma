@@ -1,0 +1,230 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Dev: SQLite (switch to postgresql for prod)
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+///////////////////////////////////////////////////////
+// Users & Auth (NextAuth-compatible)
+///////////////////////////////////////////////////////
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String
+  role         Role     @default(EMPLOYEE)
+  createdAt    DateTime @default(now())
+
+  // Kiosk PIN (4–6 digits, set via admin)
+  employeeCode String? @unique
+
+  // NextAuth relations
+  accounts Account[]
+  sessions Session[] // ok even with JWT sessions
+
+  // App relations
+  timeEntries     WorkSession[]
+  editRequests    EditRequest[] @relation("RequestedBy") // requests created by this user
+  decidedRequests EditRequest[] @relation("DecidedBy") // requests this user approved/rejected
+  auditLogs       AuditLog[]    @relation("Actor") // actions performed by this user
+  breakPeriods    BreakPeriod[] // breaks taken by this user
+
+  // Admin decisions on signup requests
+  signupDecisions SignupRequest[] @relation("SignupDecider")
+}
+
+model Account {
+  id                String @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+
+  // token-ish fields (plain String for SQLite)
+  refresh_token String?
+  access_token  String?
+  expires_at    Int?
+  token_type    String?
+  scope         String?
+  id_token      String?
+  session_state String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+enum Role {
+  EMPLOYEE
+  MANAGER
+  ADMIN
+}
+
+///////////////////////////////////////////////////////
+// Time Tracking (+ Geofence fields)
+///////////////////////////////////////////////////////
+
+model WorkSession {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startUtc  DateTime
+  endUtc    DateTime?
+  method    String?
+  deviceId  String?
+  geoHash   String?
+  notes     String?
+  createdAt DateTime  @default(now())
+
+  // Geofence capture
+  latitude  Float?
+  longitude Float?
+  siteId    String?
+  site      Site?   @relation(fields: [siteId], references: [id], onDelete: SetNull)
+
+  // Back-relations
+  editRequests EditRequest[] @relation("SessionEditRequests")
+  breaks       BreakPeriod[] @relation("SessionBreaks")
+
+  @@index([userId, endUtc])
+}
+
+///////////////////////////////////////////////////////
+// Edit Requests + Approvals + Audit Log
+///////////////////////////////////////////////////////
+
+model EditRequest {
+  id String @id @default(cuid())
+
+  // who requested
+  userId String
+  user   User   @relation("RequestedBy", fields: [userId], references: [id], onDelete: Cascade)
+
+  // which session (optional for CREATE)
+  sessionId String?
+  session   WorkSession? @relation("SessionEditRequests", fields: [sessionId], references: [id], onDelete: SetNull)
+
+  // requested changes
+  type        EditType
+  newStartUtc DateTime?
+  newEndUtc   DateTime?
+  reason      String?
+
+  // workflow
+  status      RequestStatus @default(PENDING)
+  decidedById String?
+  decidedBy   User?         @relation("DecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt   DateTime?
+  note        String?
+
+  createdAt DateTime @default(now())
+
+  @@index([status, createdAt])
+}
+
+enum EditType {
+  UPDATE
+  CREATE
+  DELETE
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model AuditLog {
+  id String @id @default(cuid())
+
+  actorId String?
+  actor   User?   @relation("Actor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  action     String // e.g. REQUEST_APPROVED, REQUEST_REJECTED
+  entityType String // e.g. "EditRequest", "WorkSession"
+  entityId   String?
+  beforeJson String?
+  afterJson  String?
+
+  createdAt DateTime @default(now())
+}
+
+///////////////////////////////////////////////////////
+// Breaks (named to avoid prisma.break accessor)
+///////////////////////////////////////////////////////
+
+model BreakPeriod {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  sessionId String
+  session   WorkSession @relation("SessionBreaks", fields: [sessionId], references: [id], onDelete: Cascade)
+
+  startUtc  DateTime
+  endUtc    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, sessionId, endUtc])
+}
+
+///////////////////////////////////////////////////////
+// Geofenced Sites
+///////////////////////////////////////////////////////
+
+model Site {
+  id           String   @id @default(cuid())
+  name         String
+  latitude     Float
+  longitude    Float
+  radiusMeters Int
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  sessions WorkSession[]
+
+  @@index([active])
+}
+
+///////////////////////////////////////////////////////
+// Signup requests (admin approval before user is created)
+///////////////////////////////////////////////////////
+
+model SignupRequest {
+  id           String  @id @default(cuid())
+  email        String  @unique
+  name         String?
+  passwordHash String
+  reason       String?
+
+  status      RequestStatus @default(PENDING)
+  decidedById String?
+  decidedBy   User?         @relation("SignupDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt   DateTime?
+  note        String?
+
+  createdAt DateTime @default(now())
+}
