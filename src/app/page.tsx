@@ -1,124 +1,103 @@
-"use client";
-import { useEffect, useState } from "react";
+import Image from "next/image";
 
 export default function Home() {
-  const [loading, setLoading] = useState(true);
-  const [inStatus, setInStatus] = useState(false);
-  const [startedAt, setStartedAt] = useState<string | null>(null);
-  const [onBreak, setOnBreak] = useState(false);
-  const [breakStartedAt, setBreakStartedAt] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
-
-  // location
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [locErr, setLocErr] = useState<string | null>(null);
-
-  async function refresh() {
-    setLoading(true);
-    const [s1, s2] = await Promise.all([
-      fetch("/api/punch/status"),
-      fetch("/api/break/status"),
-    ]);
-
-    if (s1.ok) {
-      const d = await s1.json();
-      setInStatus(d.clockedIn);
-      setStartedAt(d.startedAtUtc);
-    }
-    if (s2.ok) {
-      const d = await s2.json();
-      setOnBreak(!!d.onBreak);
-      setBreakStartedAt(d.breakStartedAtUtc ?? null);
-    }
-    setLoading(false);
-  }
-
-  useEffect(() => { refresh(); }, []);
-
-  function getLocation() {
-    setLocErr(null);
-    if (!navigator.geolocation) {
-      setLocErr("Geolocation not available in this browser.");
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      p => setCoords({ lat: p.coords.latitude, lng: p.coords.longitude }),
-      e => setLocErr(e.message),
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  }
-
-  async function toggleClock() {
-    setMsg(null);
-    if (!inStatus) {
-      // clock in → send coords if we have them
-      const body: any = { method: "web" };
-      if (coords) { body.latitude = coords.lat; body.longitude = coords.lng; }
-      const r = await fetch("/api/punch/in", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) setMsg(d.error || "Error");
-      else setMsg("You clocked in.");
-    } else {
-      const r = await fetch("/api/punch/out", { method: "POST" });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) setMsg(d.error || "Error");
-      else setMsg("You clocked out.");
-    }
-    await refresh();
-  }
-
-  async function toggleBreak() {
-    setMsg(null);
-    const path = onBreak ? "/api/break/end" : "/api/break/start";
-    const r = await fetch(path, { method: "POST" });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) setMsg(d.error || "Error");
-    else setMsg(onBreak ? "Break ended." : "Break started.");
-    await refresh();
-  }
-
   return (
-    <div className="grid place-items-center mt-16">
-      <div className="w-full max-w-lg card p-6 text-center">
-        <h1 className="text-2xl font-semibold mb-2">ClockIn</h1>
-        {msg && <p className="mb-3">{msg}</p>}
+    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
+      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
+        <Image
+          className="dark:invert"
+          src="/next.svg"
+          alt="Next.js logo"
+          width={180}
+          height={38}
+          priority
+        />
+        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
+          <li className="mb-2 tracking-[-.01em]">
+            Get started by editing{" "}
+            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
+              src/app/page.tsx
+            </code>
+            .
+          </li>
+          <li className="tracking-[-.01em]">
+            Save and see your changes instantly.
+          </li>
+        </ol>
 
-        {!coords && (
-          <button onClick={getLocation} className="rounded border px-3 py-2 mb-3">
-            Share my location (for geofence)
-          </button>
-        )}
-        {coords && <p className="text-xs mb-2">Location: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}</p>}
-        {locErr && <p className="text-xs text-red-600 mb-2">{locErr}</p>}
-
-        <div className="flex items-center justify-center gap-3">
-          <button
-            disabled={loading}
-            onClick={toggleClock}
-            className={`px-6 py-3 rounded-xl text-white font-medium ${inStatus ? "bg-red-600" : "bg-blue-600"} disabled:opacity-50`}
+        <div className="flex gap-4 items-center flex-col sm:flex-row">
+          <a
+            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
+            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+            target="_blank"
+            rel="noopener noreferrer"
           >
-            {loading ? "Loading..." : inStatus ? "Clock out" : "Clock in"}
-          </button>
-
-          <button
-            disabled={!inStatus || loading}
-            onClick={toggleBreak}
-            className={`px-6 py-3 rounded-xl text-white font-medium ${onBreak ? "bg-green-700" : "bg-amber-600"} disabled:opacity-50`}
-            title={!inStatus ? "You must be clocked in to start a break" : ""}
+            <Image
+              className="dark:invert"
+              src="/vercel.svg"
+              alt="Vercel logomark"
+              width={20}
+              height={20}
+            />
+            Deploy now
+          </a>
+          <a
+            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
+            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+            target="_blank"
+            rel="noopener noreferrer"
           >
-            {onBreak ? "End break" : "Start break"}
-          </button>
+            Read our docs
+          </a>
         </div>
-
-        <p className="text-sm mt-3">
-          {inStatus && startedAt ? `Started: ${new Date(startedAt).toLocaleString()}` : "You are currently clocked out."}
-          {inStatus && onBreak && breakStartedAt ? (
-            <> • On break since {new Date(breakStartedAt).toLocaleTimeString()}</>
-          ) : null}
-        </p>
-      </div>
+      </main>
+      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
+        <a
+          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
+          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <Image
+            aria-hidden
+            src="/file.svg"
+            alt="File icon"
+            width={16}
+            height={16}
+          />
+          Learn
+        </a>
+        <a
+          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
+          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <Image
+            aria-hidden
+            src="/window.svg"
+            alt="Window icon"
+            width={16}
+            height={16}
+          />
+          Examples
+        </a>
+        <a
+          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
+          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <Image
+            aria-hidden
+            src="/globe.svg"
+            alt="Globe icon"
+            width={16}
+            height={16}
+          />
+          Go to nextjs.org →
+        </a>
+      </footer>
     </div>
   );
 }
